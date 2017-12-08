@@ -13,7 +13,6 @@ import Mapbox
 import MapboxDirections
 import MapboxGeocoder
 
-
 class ViewController: UIViewController, CLLocationManagerDelegate, MGLMapViewDelegate
 {
     
@@ -27,7 +26,12 @@ class ViewController: UIViewController, CLLocationManagerDelegate, MGLMapViewDel
     var searchFlag: Bool = false
     var doneProcess: Bool = false
     var leftTurningPoints = [CLLocationCoordinate2D]()
-    var allPoints = [CLLocationCoordinate2D]()
+    
+    var startTime: Date?
+    var endTime: Date?
+    var isStart: Bool = false
+    var isTurning: Bool = false
+    var elapsedTime: [Double] = [Double()]
     
     @IBOutlet weak var speedButton: UIButton!
     @IBOutlet weak var mapviewlayer: UIView!
@@ -67,13 +71,44 @@ class ViewController: UIViewController, CLLocationManagerDelegate, MGLMapViewDel
         if (startRoute){
             zoomIntopoint(mapView)
         }
+        
         //if
         if(doneProcess){
             print("here")
-            print(leftTurningPoints)
-            
+            if(leftTurningPoints.count > 1){
+                for i in 0...leftTurningPoints.count - 1{
+                    let coord = CLLocation(latitude: leftTurningPoints[i].latitude, longitude: leftTurningPoints[i].longitude)
+                    let distanceInMeters = locationManager.location?.distance(from: coord)
+                    if(Double(distanceInMeters!) <= 300.0 && !isStart){
+                        print("in start bubble")
+                        recordStart()
+                    }
+                    else if(Double(distanceInMeters!) <= 50.0 && isStart && !isTurning){
+                        print("in turn bubble")
+                        isTurning = true;
+                    } else if(Double(distanceInMeters!) >= 50.0 && isStart && isTurning){
+                        print("finish turn and start")
+                        isTurning = false;
+                        recordEnd()
+                        break
+                    }
+                }
+            }
+            print (elapsedTime)
         }
     }
+    
+    func recordStart(){
+        self.startTime = Date()
+        self.isStart = true
+    }
+    func recordEnd(){
+        self.endTime = Date()
+        self.elapsedTime.append((self.endTime?.timeIntervalSince(self.startTime!))!)
+        self.leftTurningPoints.removeFirst()
+        self.isStart = false
+    }
+    
     //authorized for using location
     func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
         if status == .authorizedAlways {
@@ -234,13 +269,37 @@ extension ViewController{
             self.startRoute = false
             self.searchFlag = false
             self.doneProcess = false
+
             if let annotations = self.mapView.annotations {
                 self.mapView.removeAnnotations(annotations)
                 self.destinationGlobal = nil
             }
+            
+            self.showAlert(aggregate:self.elapsedTime.reduce(0, +))
         }
         let cancelAction = UIAlertAction(title: "Cancel", style: .cancel) { (_) in
             
+        }
+        
+        alertController.addAction(confirmAction)
+        alertController.addAction(cancelAction)
+        
+        self.present(alertController, animated: true, completion: nil)
+    }
+    func showAlert(aggregate : Double){
+        let alertController = UIAlertController(title: "Time Spent in Turning Left", message: String(format:"%.1f",aggregate) + " seconds", preferredStyle: .alert)
+        let confirmAction = UIAlertAction(title: "Cool", style: .destructive) { (_) in
+        
+            if let annotations = self.mapView.annotations {
+                self.isTurning = false
+                self.isStart = false
+                self.elapsedTime = []
+            }
+        }
+        let cancelAction = UIAlertAction(title: "Cancel", style: .cancel) { (_) in
+            self.isTurning = false
+            self.isStart = false
+            self.elapsedTime = []
         }
         
         alertController.addAction(confirmAction)
@@ -316,7 +375,7 @@ extension ViewController{
             }
             print("I'm done")
             self.doneProcess=true
-            self.allPoints = self.leftTurningPoints
+            //self.allPoints = self.leftTurningPoints
         }
     }
 }
